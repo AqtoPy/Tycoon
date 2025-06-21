@@ -1,76 +1,59 @@
 extends Node
 
-# Уровни улучшений
+class_name UpgradeSystem
+
+signal upgrade_purchased(upgrade_type, new_level)
+
+enum UPGRADE_TYPES {
+    AXE,
+    PICKAXE,
+    BACKPACK,
+    MAGNET
+}
+
 var upgrades = {
-    "axe": {
+    UPGRADE_TYPES.AXE: {
+        "name": "Топор",
         "level": 1,
-        "damage": 1,
-        "costs": [
-            {"wood": 10, "stone": 5},
-            {"wood": 20, "stone": 10, "iron": 2},
-            {"wood": 30, "stone": 15, "iron": 5}
-        ]
+        "max_level": 5,
+        "cost_func": func(lvl): return {"wood": 10 + lvl*5, "stone": 5 + lvl*3},
+        "effect_func": func(lvl): return 1 + lvl*0.5  # Множитель урона
     },
-    "pickaxe": {
+    UPGRADE_TYPES.PICKAXE: {
+        "name": "Кирка", 
         "level": 1,
-        "damage": 1,
-        "costs": [
-            {"wood": 5, "stone": 10},
-            {"wood": 10, "stone": 20, "iron": 3},
-            {"wood": 15, "stone": 30, "iron": 8}
-        ]
-    },
-    "backpack": {
-        "level": 1,
-        "capacity": 100,
-        "costs": [
-            {"wood": 15, "stone": 5},
-            {"wood": 30, "stone": 10, "iron": 3},
-            {"wood": 50, "stone": 20, "iron": 10}
-        ]
+        "max_level": 5,
+        "cost_func": func(lvl): return {"stone": 15 + lvl*8, "iron": 3 + lvl*2},
+        "effect_func": func(lvl): return 1 + lvl*0.6
     }
 }
 
-func can_afford_upgrade(upgrade_type: String, player_resources: Dictionary) -> bool:
-    if not upgrades.has(upgrade_type):
+func can_afford_upgrade(upgrade_type: UPGRADE_TYPES, player_resources: Dictionary) -> bool:
+    var upgrade = upgrades[upgrade_type]
+    if upgrade.level >= upgrade.max_level:
         return false
     
-    var current_level = upgrades[upgrade_type]["level"]
-    if current_level >= upgrades[upgrade_type]["costs"].size():
-        return false
-    
-    var cost = upgrades[upgrade_type]["costs"][current_level - 1]
-    
+    var cost = upgrade.cost_func.call(upgrade.level)
     for resource in cost:
         if player_resources.get(resource, 0) < cost[resource]:
             return false
-    
     return true
 
-func purchase_upgrade(upgrade_type: String, player_resources: Dictionary) -> bool:
+func purchase_upgrade(upgrade_type: UPGRADE_TYPES, player_resources: Dictionary) -> bool:
     if not can_afford_upgrade(upgrade_type, player_resources):
         return false
     
-    var current_level = upgrades[upgrade_type]["level"]
-    var cost = upgrades[upgrade_type]["costs"][current_level - 1]
+    var upgrade = upgrades[upgrade_type]
+    var cost = upgrade.cost_func.call(upgrade.level)
     
-    # Вычитаем ресурсы
+    # Оплата
     for resource in cost:
         player_resources[resource] -= cost[resource]
     
-    # Улучшаем
-    upgrades[upgrade_type]["level"] += 1
-    
-    # Применяем улучшение
-    match upgrade_type:
-        "axe", "pickaxe":
-            upgrades[upgrade_type]["damage"] += 1
-        "backpack":
-            upgrades[upgrade_type]["capacity"] += 50
-    
+    # Улучшение
+    upgrade.level += 1
+    emit_signal("upgrade_purchased", upgrade_type, upgrade.level)
     return true
 
-func get_upgrade_info(upgrade_type: String) -> Dictionary:
-    if upgrades.has(upgrade_type):
-        return upgrades[upgrade_type].duplicate()
-    return {}
+func get_upgrade_info(upgrade_type: UPGRADE_TYPES) -> Dictionary:
+    return upgrades[upgrade_type].duplicate()
