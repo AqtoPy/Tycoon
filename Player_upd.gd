@@ -1,58 +1,58 @@
 extends CharacterBody3D
 
-# Добавляем экспортируемые переменные для UI
-@export var resource_label: Label
-@export var upgrade_buttons: Array[Button]
+@export var tool_models: Dictionary = {
+    "axe": $ToolAnchor/AxeModel,
+    "pickaxe": $ToolAnchor/PickaxeModel,
+    "hat": $Head/HatModel
+}
 
-# Ресурсы игрока
 var resources = {
     "wood": 0,
     "stone": 0,
     "iron": 0,
-    "gold": 0
+    "cloth": 0
 }
 
-# Ссылка на систему улучшений
-var upgrade_system: UpgradeSystem
+var speed_multiplier: float = 1.0
+var base_speed: float = 5.0
 
 func _ready():
-    # Получаем систему улучшений автоматически
-    upgrade_system = get_node("/root/UpgradeSystem")
-    update_ui()
+    var upgrade_system = get_node("/root/UpgradeSystem")
+    upgrade_system.upgrade_purchased.connect(_on_upgrade_purchased)
+    upgrade_system.tool_model_changed.connect(_on_tool_model_changed)
 
-func add_resource(resource_type: String, amount: int):
-    if resources.has(resource_type):
-        resources[resource_type] += amount
-        update_ui()
-        # Визуальный эффект
-        show_resource_popup(resource_type, amount)
-
-func update_ui():
-    # Обновляем отображение ресурсов
-    resource_label.text = "Дерево: %d\nКамень: %d\nЖелезо: %d\nЗолото: %d" % [
-        resources.wood,
-        resources.stone,
-        resources.iron,
-        resources.gold
-    ]
+func equip_hat(model_path: String):
+    if model_path == null:
+        tool_models["hat"].visible = false
+        return
     
-    # Обновляем кнопки улучшений
-    update_upgrade_buttons()
+    var new_hat = load(model_path).instantiate()
+    tool_models["hat"].queue_free()
+    tool_models["hat"] = new_hat
+    $Head.add_child(new_hat)
+    new_hat.visible = true
 
-func update_upgrade_buttons():
-    for i in range(upgrade_buttons.size()):
-        var upgrade_id = i
-        var button = upgrade_buttons[i]
-        var upgrade_info = upgrade_system.get_upgrade_info(upgrade_id)
-        
-        button.text = "%s (Ур. %d)" % [upgrade_info.name, upgrade_info.level]
-        button.disabled = not upgrade_system.can_afford_upgrade(upgrade_id, resources)
+func _on_upgrade_purchased(upgrade_type, new_level):
+    var upgrade_system = get_node("/root/UpgradeSystem")
+    match upgrade_type:
+        UpgradeSystem.UpgradeType.HAT:
+            speed_multiplier = 1.0 + 0.1 * new_level
+        UpgradeSystem.UpgradeType.AXE:
+            $HarvestComponent.tree_damage = 1.0 + 0.3 * (new_level - 1)
+        UpgradeSystem.UpgradeType.PICKAXE:
+            $HarvestComponent.rock_damage = 1.0 + 0.4 * (new_level - 1)
 
-func apply_upgrade_effects():
-    # Правильное получение системы улучшений
-    var axe_level = upgrade_system.current_levels[UpgradeSystem.UpgradeID.AXE]
-    var pickaxe_level = upgrade_system.current_levels[UpgradeSystem.UpgradeID.PICKAXE]
+func _on_tool_model_changed(tool_type, model_index):
+    var upgrade_system = get_node("/root/UpgradeSystem")
+    var model_path = upgrade_system.upgrades[tool_type].model_paths[model_index]
     
-    # Применяем эффекты
-    $HarvestComponent.damage_multipliers["wood"] = 1.0 + (axe_level - 1) * 0.5
-    $HarvestComponent.damage_multipliers["stone"] = 1.0 + (pickaxe_level - 1) * 0.5
+    var new_model = load(model_path).instantiate()
+    var tool_name = "axe" if tool_type == UpgradeSystem.UpgradeType.AXE else "pickaxe"
+    
+    tool_models[tool_name].queue_free()
+    tool_models[tool_name] = new_model
+    $ToolAnchor.add_child(new_model)
+
+func _physics_process(delta):
+    var move_speed = base_speed * speed_multiplier
+    # ... остальная логика движения
