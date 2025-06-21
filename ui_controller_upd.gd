@@ -1,62 +1,48 @@
 extends Control
 
-@onready var upgrade_buttons = {
-    UpgradeSystem.UpgradeID.AXE: $UpgradePanel/AxeUpgradeButton,
-    UpgradeSystem.UpgradeID.PICKAXE: $UpgradePanel/PickaxeUpgradeButton
+@onready var resource_labels = {
+    "wood": $Resources/WoodLabel,
+    "stone": $Resources/StoneLabel,
+    "iron": $Resources/IronLabel,
+    "cloth": $Resources/ClothLabel
 }
 
-@onready var player = get_node("/root/Game/Player")
-@onready var upgrade_system = get_node("/root/Game/UpgradeSystem")
+@onready var upgrade_buttons = {
+    UpgradeSystem.UpgradeType.AXE: $UpgradePanel/AxeButton,
+    UpgradeSystem.UpgradeType.PICKAXE: $UpgradePanel/PickaxeButton,
+    UpgradeSystem.UpgradeType.HAT: $UpgradePanel/HatButton
+}
 
 func _ready():
-    upgrade_system.upgrade_purchased.connect(_on_upgrade_purchased)
-    _update_all_buttons()
+    var upgrade_system = get_node("/root/UpgradeSystem")
+    var player = get_node("/root/Game/Player")
+    
+    for upgrade_type in upgrade_buttons:
+        var button = upgrade_buttons[upgrade_type]
+        button.pressed.connect(_on_upgrade_pressed.bind(upgrade_type))
+    
+    update_ui()
 
-func _on_upgrade_button_pressed(upgrade_id: UpgradeSystem.UpgradeID):
-    if upgrade_system.purchase_upgrade(upgrade_id, player.resources):
-        _play_upgrade_effect(upgrade_buttons[upgrade_id])
+func update_ui():
+    var player = get_node("/root/Game/Player")
+    var upgrade_system = get_node("/root/UpgradeSystem")
+    
+    # Обновляем ресурсы
+    for resource in resource_labels:
+        resource_labels[resource].text = str(player.resources.get(resource, 0))
+    
+    # Обновляем кнопки
+    for upgrade_type in upgrade_buttons:
+        var button = upgrade_buttons[upgrade_type]
+        var upgrade = upgrade_system.upgrades[upgrade_type]
+        
+        button.text = "%s (Ур. %d/%d)" % [upgrade.name, upgrade.level, upgrade.max_level]
+        button.disabled = not upgrade_system.can_afford_upgrade(upgrade_type, player.resources) or upgrade.level >= upgrade.max_level
 
-func _on_upgrade_purchased(_upgrade_id: UpgradeSystem.UpgradeID, _new_level: int):
-    _update_all_buttons()
-    $Notification.show_message("Улучшение куплено!")
-
-func _update_all_buttons():
-    for upgrade_id in upgrade_buttons:
-        _update_button(upgrade_id)
-
-func _update_button(upgrade_id: UpgradeSystem.UpgradeID):
-    var button = upgrade_buttons[upgrade_id]
-    var info = upgrade_system.get_upgrade_info(upgrade_id)
+func _on_upgrade_pressed(upgrade_type):
+    var player = get_node("/root/Game/Player")
+    var upgrade_system = get_node("/root/UpgradeSystem")
     
-    if info.is_empty():
-        button.visible = false
-        return
-    
-    # Основная информация
-    button.text = "%s (Ур. %d/%d)" % [info.name, info.level, info.max_level]
-    
-    # Описание стоимости
-    var cost_text = "Стоимость:\n"
-    for resource in info.cost:
-        cost_text += "%s: %d\n" % [resource.capitalize(), info.cost[resource]]
-    
-    # Описание эффектов
-    var effect_text = "Текущий эффект: %.1f\n" % info.value
-    if info.level < info.max_level:
-        effect_text += "Следующий уровень: %.1f" % info.next_value
-    else:
-        effect_text += "Макс. уровень"
-    
-    button.tooltip_text = "%s\n\n%s\n\n%s" % [
-        info.description,
-        cost_text,
-        effect_text
-    ]
-    
-    # Состояние кнопки
-    button.disabled = not upgrade_system.can_afford_upgrade(upgrade_id, player.resources) or info.level >= info.max_level
-
-func _play_upgrade_effect(button: Button):
-    var tween = create_tween()
-    tween.tween_property(button, "modulate", Color.GOLD, 0.2)
-    tween.tween_property(button, "modulate", Color.WHITE, 0.2)
+    if upgrade_system.purchase_upgrade(upgrade_type, player):
+        update_ui()
+        $UpgradeSound.play()
