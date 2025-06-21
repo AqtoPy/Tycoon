@@ -1,76 +1,84 @@
 extends Node
-
 class_name UpgradeSystem
 
-signal upgrade_purchased(upgrade_type, new_level)
+signal upgrade_purchased(upgrade_id, new_level)
 
-enum UpgradeType {
+enum UpgradeID {
     AXE,
     PICKAXE,
     BACKPACK,
     MAGNET
 }
 
-var upgrades = {
-    UpgradeType.AXE: {
+var upgrades_data = {
+    UpgradeID.AXE: {
         "name": "Топор",
-        "level": 1,
+        "description": "Увеличивает урон по деревьям",
         "max_level": 5,
-        "cost": {"wood": 10, "stone": 5},
-        "cost_increase": {"wood": 5, "stone": 3},
-        "effect": 1.0,
-        "effect_increase": 0.5
+        "base_cost": {"wood": 10, "stone": 5},
+        "cost_increase": {"wood": 5, "stone": 2},
+        "base_value": 1.0,
+        "value_increase": 0.5
     },
-    UpgradeType.PICKAXE: {
-        "name": "Кирка",
-        "level": 1,
+    UpgradeID.PICKAXE: {
+        "name": "Кирка", 
+        "description": "Увеличивает урон по камням",
         "max_level": 5,
-        "cost": {"stone": 15, "iron": 3},
-        "cost_increase": {"stone": 8, "iron": 2},
-        "effect": 1.0,
-        "effect_increase": 0.6
+        "base_cost": {"stone": 15, "iron": 3},
+        "cost_increase": {"stone": 8, "iron": 1},
+        "base_value": 1.0,
+        "value_increase": 0.6
     }
 }
 
-func get_upgrade_cost(upgrade_type: UpgradeType) -> Dictionary:
-    var upgrade = upgrades[upgrade_type]
-    var cost = {}
-    for resource in upgrade.cost:
-        cost[resource] = upgrade.cost[resource] + (upgrade.level - 1) * upgrade.cost_increase.get(resource, 0)
-    return cost
+var current_levels = {
+    UpgradeID.AXE: 1,
+    UpgradeID.PICKAXE: 1
+}
 
-func can_afford_upgrade(upgrade_type: UpgradeType, player_resources: Dictionary) -> bool:
-    if upgrade_type >= UpgradeType.size():
+func get_upgrade_info(upgrade_id: UpgradeID) -> Dictionary:
+    if not upgrades_data.has(upgrade_id):
+        return {}
+    
+    var data = upgrades_data[upgrade_id]
+    var level = current_levels.get(upgrade_id, 1)
+    
+    # Рассчитываем текущую стоимость
+    var current_cost = {}
+    for resource in data.base_cost:
+        var base = data.base_cost[resource]
+        var increase = data.cost_increase.get(resource, 0)
+        current_cost[resource] = base + (level - 1) * increase
+    
+    return {
+        "id": upgrade_id,
+        "name": data.name,
+        "description": data.description,
+        "level": level,
+        "max_level": data.max_level,
+        "cost": current_cost,
+        "value": data.base_value + (level - 1) * data.value_increase,
+        "next_value": data.base_value + level * data.value_increase if level < data.max_level else 0
+    }
+
+func can_afford_upgrade(upgrade_id: UpgradeID, resources: Dictionary) -> bool:
+    var info = get_upgrade_info(upgrade_id)
+    if info.is_empty() or info.level >= info.max_level:
         return false
     
-    var upgrade = upgrades[upgrade_type]
-    if upgrade.level >= upgrade.max_level:
-        return false
-    
-    var cost = get_upgrade_cost(upgrade_type)
-    for resource in cost:
-        if player_resources.get(resource, 0) < cost[resource]:
+    for resource in info.cost:
+        if resources.get(resource, 0) < info.cost[resource]:
             return false
     return true
 
-func purchase_upgrade(upgrade_type: UpgradeType, player_resources: Dictionary) -> bool:
-    if not can_afford_upgrade(upgrade_type, player_resources):
+func purchase_upgrade(upgrade_id: UpgradeID, resources: Dictionary) -> bool:
+    if not can_afford_upgrade(upgrade_id, resources):
         return false
     
-    var cost = get_upgrade_cost(upgrade_type)
-    for resource in cost:
-        player_resources[resource] -= cost[resource]
+    var info = get_upgrade_info(upgrade_id)
+    for resource in info.cost:
+        resources[resource] -= info.cost[resource]
     
-    upgrades[upgrade_type].level += 1
-    upgrades[upgrade_type].effect += upgrades[upgrade_type].effect_increase
-    emit_signal("upgrade_purchased", upgrade_type, upgrades[upgrade_type].level)
+    current_levels[upgrade_id] += 1
+    emit_signal("upgrade_purchased", upgrade_id, current_levels[upgrade_id])
     return true
-
-func get_upgrade_info(upgrade_type: UpgradeType) -> Dictionary:
-    return {
-        "name": upgrades[upgrade_type].name,
-        "level": upgrades[upgrade_type].level,
-        "max_level": upgrades[upgrade_type].max_level,
-        "cost": get_upgrade_cost(upgrade_type),
-        "effect": upgrades[upgrade_type].effect
-    }
